@@ -40,6 +40,27 @@ type Options struct {
 	// When empty, the first step in Steps is the start step. Validated
 	// at New() time to reference an existing step.
 	StartAt string `json:"start_at,omitempty" yaml:"start_at,omitempty"`
+	// Groups is purely organizational metadata for editors (visual
+	// sub-flows / parent-child). The executor ignores it entirely —
+	// execution is flat and name-based. It is validated for internal
+	// consistency and round-trips through save → validate → reload.
+	Groups []*Group `json:"groups,omitempty" yaml:"groups,omitempty"`
+}
+
+// Group is a named, optionally collapsible visual region containing
+// steps (referenced by Step.GroupID). Identity is the stable ID,
+// decoupled from step names. Layout hints (x/y/width/height) let an
+// editor reopen a saved sub-flow where the author left it.
+type Group struct {
+	ID          string  `json:"id" yaml:"id"`
+	Name        string  `json:"name,omitempty" yaml:"name,omitempty"`
+	Description string  `json:"description,omitempty" yaml:"description,omitempty"`
+	ParentID    string  `json:"parent_id,omitempty" yaml:"parent_id,omitempty"`
+	Collapsed   bool    `json:"collapsed,omitempty" yaml:"collapsed,omitempty"`
+	X           float64 `json:"x,omitempty" yaml:"x,omitempty"`
+	Y           float64 `json:"y,omitempty" yaml:"y,omitempty"`
+	Width       float64 `json:"width,omitempty" yaml:"width,omitempty"`
+	Height      float64 `json:"height,omitempty" yaml:"height,omitempty"`
 }
 
 // Workflow defines a repeatable process as a graph of steps to be executed.
@@ -52,6 +73,7 @@ type Workflow struct {
 	stepsByName  map[string]*Step
 	start        *Step
 	initialState map[string]any
+	groups       []*Group
 }
 
 // New returns a new Workflow configured with the given options.
@@ -111,6 +133,7 @@ func New(opts Options) (*Workflow, error) {
 		stepsByName:  stepsByName,
 		start:        start,
 		initialState: opts.State,
+		groups:       opts.Groups,
 	}
 
 	if err := wf.Validate(); err != nil {
@@ -146,6 +169,12 @@ func (w *Workflow) Inputs() []*Input {
 // Outputs returns the workflow outputs
 func (w *Workflow) Outputs() []*Output {
 	return w.outputs
+}
+
+// Groups returns the workflow's visual group metadata (editor-only;
+// the executor does not use it).
+func (w *Workflow) Groups() []*Group {
+	return w.groups
 }
 
 // Steps returns the workflow steps
