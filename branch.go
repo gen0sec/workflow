@@ -1211,6 +1211,22 @@ func (p *branch) evaluateParameterValue(ctx context.Context, value interface{}, 
 		}
 		return outMap, nil
 	}
+	// Recurse into slices so ${…} templates inside parameters like
+	// "evidence": [{"label":"…","value":"${state.x}"}] expand the
+	// same way they do inside maps. Without this, a slice falls
+	// through to the (value.(string)) assertion below — fails — and
+	// the slice is returned verbatim with literal "${…}" inside.
+	if sliceValue, ok := value.([]any); ok {
+		outSlice := make([]any, len(sliceValue))
+		for i, inner := range sliceValue {
+			evaluated, err := p.evaluateParameterValue(ctx, inner, stepName, paramName)
+			if err != nil {
+				return nil, err
+			}
+			outSlice[i] = evaluated
+		}
+		return outSlice, nil
+	}
 
 	strValue, ok := value.(string)
 	if !ok {
