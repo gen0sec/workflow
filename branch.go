@@ -773,9 +773,18 @@ func (p *branch) executeStepOnce(ctx context.Context, step *Step) (any, error) {
 		return nil, fmt.Errorf("activity %q not found for step %q", activityName, step.Name)
 	}
 
-	// Prepare parameters by evaluating templates and script expressions
+	// Prepare parameters by evaluating templates and script expressions.
+	// A failure here (undefined identifier, missing template key, etc.)
+	// happens BEFORE ExecuteActivity ever fires the Before/After
+	// ActivityExecution callbacks — so without this synthetic dispatch,
+	// the step-progress tracker would never see the step at all and the
+	// run's per-step view would show only the steps that completed
+	// successfully before it. Emit a Before+After pair carrying the
+	// error so the tracker records a {running -> failed} transition for
+	// the step exactly as it would for an activity that crashed.
 	params, err := p.buildStepParameters(ctx, step)
 	if err != nil {
+		p.dispatchParameterFailure(ctx, step, activityName, err)
 		return nil, err
 	}
 
@@ -786,6 +795,31 @@ func (p *branch) executeStepOnce(ctx context.Context, step *Step) (any, error) {
 			activityName, step.Name, err)
 	}
 	return result, nil
+}
+
+// dispatchParameterFailure synthesises the Before/After ActivityExecution
+// callback pair for a step whose parameter templates failed to evaluate.
+// It is the only place a step transitions running->failed without ever
+// reaching activityExecutor.ExecuteActivity, so it carries the same
+// observability contract: trackers and consumer callbacks see one
+// running event and one terminal failed event with the captured error.
+func (p *branch) dispatchParameterFailure(ctx context.Context, step *Step, activityName string, err error) {
+	if p.executionCallbacks == nil {
+		return
+	}
+	now := time.Now()
+	ev := &ActivityExecutionEvent{
+		ExecutionID:  p.executionID,
+		WorkflowName: p.workflow.Name(),
+		BranchID:     p.id,
+		StepName:     step.Name,
+		ActivityName: activityName,
+		StartTime:    now,
+	}
+	p.executionCallbacks.BeforeActivityExecution(ctx, ev)
+	ev.EndTime = now
+	ev.Error = err
+	p.executionCallbacks.AfterActivityExecution(ctx, ev)
 }
 
 // executeStepWithRetry executes a step with retry logic using multiple retry configurations
@@ -999,9 +1033,13 @@ func (p *branch) executeStepEach(ctx context.Context, step *Step) (any, error) {
 			p.state.Set(each.As, item)
 		}
 
-		// Prepare parameters for this iteration
+		// Prepare parameters for this iteration. As in executeStepOnce,
+		// a parameter-template failure happens before ExecuteActivity
+		// can fire its Before/After callbacks, so synthesise the pair
+		// here to keep the step-progress tracker honest.
 		params, err := p.buildStepParameters(ctx, step)
 		if err != nil {
+			p.dispatchParameterFailure(ctx, step, activityName, err)
 			restoreAs()
 			return nil, err
 		}

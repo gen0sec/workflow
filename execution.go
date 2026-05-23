@@ -292,6 +292,13 @@ func NewExecution(wf *Workflow, reg *ActivityRegistry, opts ...ExecutionOption) 
 		UpdatesChannel:   execution.branchSnapshots,
 		ScriptCompiler:   cfg.scriptCompiler,
 		SignalStore:      cfg.signalStore,
+		// Hand the (chain-wrapped) execution callbacks to every branch
+		// so branch-level failures that never reach the activity adapter
+		// — e.g. a parameter-template evaluation error in
+		// executeStepOnce — can still synthesise an
+		// AfterActivityExecution(error) event and keep the
+		// step-progress tracker honest.
+		ExecutionCallbacks: execution.executionCallbacks,
 	}
 
 	return execution, nil
