@@ -36,6 +36,9 @@ func NewFileCheckpointer(dataDir string) (*FileCheckpointer, error) {
 
 // SaveCheckpoint saves the execution checkpoint to disk
 func (c *FileCheckpointer) SaveCheckpoint(ctx context.Context, checkpoint *Checkpoint) error {
+	if err := validateExecutionID(checkpoint.ExecutionID); err != nil {
+		return fmt.Errorf("FileCheckpointer.SaveCheckpoint: %w", err)
+	}
 	executionDir := filepath.Join(c.dataDir, checkpoint.ExecutionID)
 	if err := os.MkdirAll(executionDir, 0755); err != nil {
 		return fmt.Errorf("failed to create execution directory: %w", err)
@@ -63,6 +66,9 @@ func (c *FileCheckpointer) SaveCheckpoint(ctx context.Context, checkpoint *Check
 
 // LoadCheckpoint loads the latest checkpoint for an execution
 func (c *FileCheckpointer) LoadCheckpoint(ctx context.Context, executionID string) (*Checkpoint, error) {
+	if err := validateExecutionID(executionID); err != nil {
+		return nil, fmt.Errorf("FileCheckpointer.LoadCheckpoint: %w", err)
+	}
 	latestPath := filepath.Join(c.dataDir, executionID, "latest.json")
 
 	// Check if latest checkpoint exists
@@ -90,6 +96,9 @@ func (c *FileCheckpointer) LoadCheckpoint(ctx context.Context, executionID strin
 
 // DeleteCheckpoint removes all checkpoint data for an execution
 func (c *FileCheckpointer) DeleteCheckpoint(ctx context.Context, executionID string) error {
+	if err := validateExecutionID(executionID); err != nil {
+		return fmt.Errorf("FileCheckpointer.DeleteCheckpoint: %w", err)
+	}
 	executionDir := filepath.Join(c.dataDir, executionID)
 	if err := os.RemoveAll(executionDir); err != nil {
 		return fmt.Errorf("failed to delete execution directory: %w", err)

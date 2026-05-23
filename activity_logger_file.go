@@ -24,6 +24,9 @@ func (l *FileActivityLogger) executionActivityLogPath(executionID string) string
 }
 
 func (l *FileActivityLogger) GetActivityHistory(ctx context.Context, executionID string) ([]*ActivityLogEntry, error) {
+	if err := validateExecutionID(executionID); err != nil {
+		return nil, fmt.Errorf("FileActivityLogger.GetActivityHistory: %w", err)
+	}
 	filePath := l.executionActivityLogPath(executionID)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -44,6 +47,9 @@ func (l *FileActivityLogger) GetActivityHistory(ctx context.Context, executionID
 }
 
 func (l *FileActivityLogger) LogActivity(ctx context.Context, entry *ActivityLogEntry) error {
+	if err := validateExecutionID(entry.ExecutionID); err != nil {
+		return fmt.Errorf("FileActivityLogger.LogActivity: %w", err)
+	}
 	json, err := json.Marshal(entry)
 	if err != nil {
 		return err

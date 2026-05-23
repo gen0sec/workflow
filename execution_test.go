@@ -1037,6 +1037,19 @@ func TestBranchBranching(t *testing.T) {
 			completedBranches = append(completedBranches, branchName)
 		}
 
+		// Sibling branches race: if failure_path returns its error
+		// before success_path's goroutine is even scheduled, the
+		// orchestrator's cancel() (execution.go:702) propagates ctx
+		// cancellation and success_path never reaches its activity
+		// body. The test's invariant — "both branches were attempted"
+		// — requires both goroutines to enter their activity before
+		// either returns. The barrier below synchronises that: each
+		// activity records its arrival, then waits for the sibling
+		// to arrive too, then proceeds (success returns success,
+		// failure returns its intentional error).
+		var bothEntered sync.WaitGroup
+		bothEntered.Add(2)
+
 		// Create workflow where one branch will fail
 		wf, err := New(Options{
 			Name: "branching-with-failure-test",
@@ -1071,10 +1084,14 @@ func TestBranchBranching(t *testing.T) {
 		}))
 		reg4.MustRegister(ActivityFunc("success_activity", func(ctx Context, params map[string]any) (any, error) {
 			recordCompletion("success_path")
+			bothEntered.Done()
+			bothEntered.Wait()
 			return "success result", nil
 		}))
 		reg4.MustRegister(ActivityFunc("failure_activity", func(ctx Context, params map[string]any) (any, error) {
 			recordCompletion("failure_path_attempted")
+			bothEntered.Done()
+			bothEntered.Wait()
 			return nil, errors.New("intentional failure in one branch")
 		}))
 		execution, err := NewExecution(wf, reg4,

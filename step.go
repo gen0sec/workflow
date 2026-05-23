@@ -154,6 +154,10 @@ type JoinConfig struct {
 type Step struct {
 	Name                 string               `json:"name"`
 	Description          string               `json:"description,omitempty"`
+	// GroupID optionally places this step inside an Options.Groups
+	// entry (visual grouping only; execution is flat and name-based,
+	// so the executor never reads this). Empty = ungrouped.
+	GroupID              string               `json:"group_id,omitempty"`
 	Store                string               `json:"store,omitempty"`
 	Activity             string               `json:"activity,omitempty"`
 	Parameters           map[string]any       `json:"parameters,omitempty"`

@@ -234,6 +234,17 @@ func (w *executionContext) BranchID() string { return w.branchID }
 // StepName returns the current step name.
 func (w *executionContext) StepName() string { return w.stepName }
 
+// ExecutionID returns the current execution ID. Activities outside
+// this package can read it by asserting on a local interface with
+// this method, e.g.:
+//
+//	type executionIDProvider interface{ ExecutionID() string }
+//	if ep, ok := ctx.(executionIDProvider); ok { id := ep.ExecutionID() }
+//
+// Additive — does not modify the Context interface (see CLAUDE.md
+// "Never modify exported interfaces"). Mirrors BranchID/StepName.
+func (w *executionContext) ExecutionID() string { return w.executionID }
+
 // ReportProgress forwards the progress detail to the configured
 // StepProgressStore, if any.
 func (w *executionContext) ReportProgress(detail ProgressDetail) {

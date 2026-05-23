@@ -79,6 +79,16 @@ var (
 	// Output.Variable) is given with a leading "state." prefix. Store
 	// fields must be bare variable names.
 	ErrInvalidStorePath = errors.New("workflow: store field must be a bare variable name")
+	// ErrEmptyGroupID is reported when an Options.Groups entry has no id.
+	ErrEmptyGroupID = errors.New("workflow: empty group id")
+	// ErrDuplicateGroupID is reported when two groups share an id.
+	ErrDuplicateGroupID = errors.New("workflow: duplicate group id")
+	// ErrUnknownGroupRef is reported when a step's group_id or a
+	// group's parent_id references a group that does not exist.
+	ErrUnknownGroupRef = errors.New("workflow: group reference not found")
+	// ErrGroupCycle is reported when a group is its own parent or the
+	// group parent chain is cyclic.
+	ErrGroupCycle = errors.New("workflow: cyclic group parent chain")
 )
 
 // Error type constants for classification and matching

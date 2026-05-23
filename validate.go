@@ -241,6 +241,68 @@ func (w *Workflow) Validate() error {
 		}
 	}
 
+	// 10. Group metadata consistency (visual only; the executor never
+	// reads groups, so this is purely structural — edges may freely
+	// cross group boundaries and are intentionally not restricted).
+	// Build the group index (empty when there are no groups). The
+	// list-level checks below are natural no-ops without groups, but
+	// the step.GroupID reference check must ALWAYS run — a step
+	// pointing at a group when none are defined is still invalid.
+	groupByID := make(map[string]*Group, len(w.groups))
+	for _, g := range w.groups {
+		if g == nil {
+			continue
+		}
+		if g.ID == "" {
+			add("", "group with empty id", ErrEmptyGroupID)
+			continue
+		}
+		if _, dup := groupByID[g.ID]; dup {
+			add("", fmt.Sprintf("duplicate group id %q", g.ID),
+				ErrDuplicateGroupID)
+			continue
+		}
+		groupByID[g.ID] = g
+	}
+	for _, g := range w.groups {
+		if g == nil || g.ID == "" || g.ParentID == "" {
+			continue
+		}
+		if g.ParentID == g.ID {
+			add("", fmt.Sprintf("group %q is its own parent", g.ID),
+				ErrGroupCycle)
+			continue
+		}
+		if _, ok := groupByID[g.ParentID]; !ok {
+			add("", fmt.Sprintf("group %q parent %q not found",
+				g.ID, g.ParentID), ErrUnknownGroupRef)
+		}
+	}
+	// Walk each parent chain; a revisit means a cycle.
+	for _, g := range w.groups {
+		if g == nil || g.ID == "" {
+			continue
+		}
+		seen := map[string]bool{g.ID: true}
+		for cur := groupByID[g.ParentID]; cur != nil; cur = groupByID[cur.ParentID] {
+			if seen[cur.ID] {
+				add("", fmt.Sprintf("group %q parent chain is cyclic", g.ID),
+					ErrGroupCycle)
+				break
+			}
+			seen[cur.ID] = true
+		}
+	}
+	for _, step := range w.steps {
+		if step.GroupID == "" {
+			continue
+		}
+		if _, ok := groupByID[step.GroupID]; !ok {
+			add(step.Name, fmt.Sprintf("group %q not found",
+				step.GroupID), ErrUnknownGroupRef)
+		}
+	}
+
 	if len(problems) > 0 {
 		return &ValidationError{Problems: problems}
 	}
