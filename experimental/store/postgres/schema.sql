@@ -88,6 +88,18 @@ CREATE INDEX IF NOT EXISTS workflow_runs_created_at_id
 -- workflow_step_progress is a derived observability table written
 -- from workflow.StepProgressStore callbacks. One row per
 -- (execution_id, step_name, branch_id); the latest update wins.
+--
+-- Pre-2026 the (execution_id, step_name, branch_id) PRIMARY KEY
+-- enforced that one-row-per-key invariant at the DB level + backed
+-- the INSERT … ON CONFLICT upsert in step_progress.go. The PK was
+-- dropped to let consumers convert this table to a TimescaleDB
+-- hypertable (TimescaleDB rejects any UNIQUE/PK that excludes the
+-- partitioning column, and a hypertable partitioned on started_at
+-- cannot keep this PK). The invariant now lives in the application
+-- layer: UpdateStepProgress takes a per-key advisory lock then
+-- SELECT-decides between INSERT and UPDATE. See step_progress.go.
+-- A regular (non-unique) btree on the lookup columns keeps the
+-- EXISTS probe + UPDATE fast.
 CREATE TABLE IF NOT EXISTS {{.Schema}}.workflow_step_progress (
     execution_id TEXT NOT NULL,
     step_name    TEXT NOT NULL,
@@ -99,12 +111,29 @@ CREATE TABLE IF NOT EXISTS {{.Schema}}.workflow_step_progress (
     started_at   TIMESTAMPTZ,
     finished_at  TIMESTAMPTZ,
     error        TEXT NOT NULL DEFAULT '',
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (execution_id, step_name, branch_id)
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- v0.0.5 -> v0.0.6 upgrade path: existing tables carry
+-- workflow_step_progress_pkey on (execution_id, step_name, branch_id).
+-- Drop it so the hypertable conversion can succeed. Application-level
+-- advisory-lock upsert in step_progress.go replaces the DB-level
+-- guarantee. Idempotent — fresh installs never had the PK.
+ALTER TABLE {{.Schema}}.workflow_step_progress
+    DROP CONSTRAINT IF EXISTS workflow_step_progress_pkey;
 
 CREATE INDEX IF NOT EXISTS workflow_step_progress_execution
     ON {{.Schema}}.workflow_step_progress (execution_id);
+
+-- Lookup index for UpdateStepProgress's EXISTS probe + UPDATE
+-- WHERE clause. Non-unique on purpose — the application-level
+-- advisory lock is what guarantees uniqueness. If duplicates ever
+-- appear (lock bypassed, manual INSERT, …) GetStepProgress would
+-- surface multiple rows for the same key; the operator can fold
+-- them with `DELETE FROM workflow_step_progress USING workflow_step_progress
+-- AS dup WHERE …` keying on the desired survivor.
+CREATE INDEX IF NOT EXISTS workflow_step_progress_key
+    ON {{.Schema}}.workflow_step_progress (execution_id, step_name, branch_id);
 
 -- workflow_activity_log is the append-only activity operation log
 -- written from workflow.ActivityLogger callbacks.
