@@ -46,6 +46,13 @@ ALTER TABLE {{.Schema}}.workflow_runs ADD COLUMN IF NOT EXISTS project_id    TEX
 ALTER TABLE {{.Schema}}.workflow_runs ADD COLUMN IF NOT EXISTS parent_run_id TEXT;
 ALTER TABLE {{.Schema}}.workflow_runs ADD COLUMN IF NOT EXISTS metadata      JSONB;
 
+-- workflow_id is the stable identity of the source workflow definition
+-- (independent of workflow_type, which is the mutable display name), so
+-- a run survives a rename of its definition. NULL for runs with no
+-- owning definition (code-defined built-ins). Set by the consumer at
+-- enqueue via NewRun.WorkflowID.
+ALTER TABLE {{.Schema}}.workflow_runs ADD COLUMN IF NOT EXISTS workflow_id   TEXT;
+
 -- Rewrite '' sentinels from v0.0.3 to NULL so the new read API
 -- (GetRun, ListRuns, DeleteRun) can find them via "org_id IS NULL"
 -- and the partial indexes (WHERE org_id IS NOT NULL) cover them
@@ -77,6 +84,12 @@ CREATE INDEX IF NOT EXISTS workflow_runs_org_project_created
 CREATE INDEX IF NOT EXISTS workflow_runs_parent_created
     ON {{.Schema}}.workflow_runs (parent_run_id, created_at DESC)
     WHERE parent_run_id IS NOT NULL;
+
+-- Runs of a given definition within a project, keyed by stable id so a
+-- rename does not scatter them across workflow_type values.
+CREATE INDEX IF NOT EXISTS workflow_runs_workflow_id
+    ON {{.Schema}}.workflow_runs (project_id, workflow_id)
+    WHERE workflow_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS workflow_runs_metadata_gin
     ON {{.Schema}}.workflow_runs USING GIN (metadata);

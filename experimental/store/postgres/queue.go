@@ -54,9 +54,10 @@ func (s *Store) EnqueueTx(ctx context.Context, tx pgx.Tx, run worker.NewRun) err
 		INSERT INTO %s (
 			id, spec, status,
 			org_id, project_id, parent_run_id,
-			workflow_type, initiated_by, credit_cost, callback_url, metadata
+			workflow_type, initiated_by, credit_cost, callback_url, metadata,
+			workflow_id
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`, s.t("workflow_runs"))
 	if _, err := tx.Exec(ctx, query,
 		run.ID, run.Spec, string(worker.StatusQueued),
@@ -68,6 +69,7 @@ func (s *Store) EnqueueTx(ctx context.Context, tx pgx.Tx, run worker.NewRun) err
 		run.CreditCost,
 		run.CallbackURL,
 		metadata,
+		nullableString(run.WorkflowID),
 	); err != nil {
 		return fmt.Errorf("postgres: enqueue run %s: %w", run.ID, err)
 	}
