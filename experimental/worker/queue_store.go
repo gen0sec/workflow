@@ -83,6 +83,13 @@ type NewRun struct {
 	// WorkflowType classifies the run (e.g., "research", "indexing").
 	WorkflowType string
 
+	// WorkflowID is the stable identity of the source workflow
+	// definition, independent of WorkflowType (its display name), so a
+	// rename does not break the link from a run back to its definition.
+	// Empty means the run has no owning definition (e.g. a code-defined
+	// built-in) and is stored as NULL.
+	WorkflowID string
+
 	// InitiatedBy identifies who or what triggered this run.
 	InitiatedBy string
 
